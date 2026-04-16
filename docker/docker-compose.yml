@@ -1,0 +1,155 @@
+version: "3.9"
+
+services:
+  # ─── API 服务 ────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env
+    environment:
+      - EMBEDDING_DEVICE=${EMBEDDING_DEVICE:-cpu}
+      - HF_HUB_OFFLINE=1          # 模型已缓存，禁止网络请求
+      - HF_HUB_CACHE=/models      # 与 cache_folder='/models' 一致
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - models_cache:/models
+    depends_on:
+      - redis
+      - milvus
+      - postgres
+    restart: unless-stopped
+
+  # ─── Celery Worker ──────────────────────────────────────────────────
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: celery -A workers.sync_worker worker --loglevel=info --concurrency=4
+    env_file:
+      - ../.env
+    environment:
+      - EMBEDDING_DEVICE=${EMBEDDING_DEVICE:-cpu}
+      - HF_HUB_OFFLINE=1
+      - HF_HUB_CACHE=/models
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - models_cache:/models
+    depends_on:
+      - redis
+      - milvus
+      - postgres
+    restart: unless-stopped
+
+  # ─── Celery Beat（定时任务调度）────────────────────────────────────
+  beat:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: celery -A workers.sync_worker beat --loglevel=info
+    env_file:
+      - ../.env
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # ─── Redis ───────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # ─── Milvus（单机模式）──────────────────────────────────────────────
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    volumes:
+      - etcd_data:/etcd
+
+  minio:
+    image: minio/minio:RELEASE.2023-03-13T19-46-17Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    command: minio server /minio_data --console-address ":9001"
+    volumes:
+      - minio_data:/minio_data
+
+  milvus:
+    image: milvusdb/milvus:v2.4.0
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    ports:
+      - "19530:19530"
+    depends_on:
+      - etcd
+      - minio
+    volumes:
+      - milvus_data:/var/lib/milvus
+    restart: unless-stopped
+
+  # ─── Ollama GPU 版（有 NVIDIA 显卡时启用）────────────────────────────
+  # 启动命令：docker compose --profile gpu up -d
+  vllm:
+    profiles: [gpu]
+    image: vllm/vllm-openai:latest
+    command: >
+      --model Qwen/Qwen2.5-7B-Instruct
+      --served-model-name Qwen/Qwen2.5-7B-Instruct
+      --dtype bfloat16
+      --max-model-len 8192
+      --gpu-memory-utilization 0.90
+      --api-key token-local
+    ports:
+      - "8001:8000"
+    volumes:
+      - models_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              count: 1
+    shm_size: "8gb"
+    restart: unless-stopped
+
+  # ─── CPU 模式：宿主机 Ollama 已在运行，容器通过 host.docker.internal 访问─────
+  # 无需额外容器，直接运行：docker compose up -d
+
+  # ─── PostgreSQL ──────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rag
+      POSTGRES_DB: ragdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  etcd_data:
+  minio_data:
+  milvus_data:
+  pg_data:
+  models_cache:    # HuggingFace 模型缓存，bge-m3 和 Qwen2.5 共用
+  ollama_data:     # Ollama 模型缓存

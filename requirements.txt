@@ -1,0 +1,35 @@
+# ── 数据同步 ─────────────────────────────────────────────────
+requests>=2.31.0
+urllib3>=2.0.0
+beautifulsoup4>=4.12.0
+
+# ── API 框架 ─────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+aiofiles>=23.0.0
+
+# ── LLM 客户端（调 vLLM OpenAI-compatible API）──────────────
+openai>=1.30.0
+
+# ── 本地 Embedding（bge-m3）─────────────────────────────────
+sentence-transformers>=3.0.0
+torch>=2.2.0               # sentence-transformers 依赖，GPU 版按官网另装
+
+# ── 向量数据库 ───────────────────────────────────────────────
+pymilvus>=2.4.0
+
+# ── 关系型数据库（元数据）────────────────────────────────────
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+
+# ── 缓存 + 任务队列 ──────────────────────────────────────────
+redis>=5.0.0
+celery>=5.4.0
+
+# ── Reranker（可选，无 GPU 也能跑 CPU 版）────────────────────
+# sentence-transformers 已包含 CrossEncoder，无需单独安装
+
+# ── Token 计数（可选，用于精准 chunk）────────────────────────
+tiktoken>=0.7.0
