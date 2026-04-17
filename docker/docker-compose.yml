@@ -19,13 +19,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - models_cache:/models
-    depends_on:
-      - redis
-      - milvus
-      - postgres
-    restart: unless-stopped
-
-  # ─── Celery Worker ──────────────────────────────────────────────────
+      - ..:/app          # 挂载源码，配合 --reload 实现热更新 ──────────────────────────────────────────────────
   worker:
     build:
       context: ..
@@ -41,6 +35,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - models_cache:/models
+      - ..:/app          # 挂载源码，重启 worker 即生效
     depends_on:
       - redis
       - milvus
