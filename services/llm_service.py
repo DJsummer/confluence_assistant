@@ -20,7 +20,7 @@ _client = OpenAI(
 )
 
 _SYSTEM_PROMPT = """\
-你是公司内部 AI 助手，专门解答基于 Confluence 知识库的问题。
+你是UICA AI 助手，专门解答基于 Confluence 知识库的问题。
 
 必须遵守的规则：
 1. 只能根据下方「参考资料」作答，不得凭空编造内容。
@@ -66,9 +66,44 @@ def generate(
         model=settings.llm_model,
         messages=messages,
         temperature=0.1,
-        max_tokens=1024,
+        max_tokens=512,
         stop=["\n\n\n"],
     )
     answer: str = resp.choices[0].message.content or ""
     log.debug("LLM generated %d chars", len(answer))
     return answer
+
+
+def generate_stream(
+    context_docs: list[dict],
+    question: str,
+    history: list[dict] | None = None,
+):
+    """流式生成，yield 文本片段（供 SSE 流式传输）"""
+    context_parts = []
+    for i, doc in enumerate(context_docs, 1):
+        context_parts.append(
+            f"[{i}] 《{doc['title']}》路径：{doc['path']}\n{doc['text']}"
+        )
+    context = "\n\n---\n\n".join(context_parts)
+
+    messages: list[dict] = [{"role": "system", "content": _SYSTEM_PROMPT}]
+    if history:
+        messages.extend(history[-_MAX_HISTORY_TURNS:])
+    messages.append({
+        "role": "user",
+        "content": f"参考资料：\n{context}\n\n问题：{question}",
+    })
+
+    stream = _client.chat.completions.create(
+        model=settings.llm_model,
+        messages=messages,
+        temperature=0.1,
+        max_tokens=512,
+        stop=["\n\n\n"],
+        stream=True,
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield delta

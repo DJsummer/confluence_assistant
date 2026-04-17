@@ -9,6 +9,7 @@ import logging
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from config.settings import settings
 from workers.sync_worker import sync_confluence
 
 log = logging.getLogger(__name__)
@@ -16,8 +17,8 @@ router = APIRouter(prefix="/sync", tags=["sync"])
 
 
 class SyncRequest(BaseModel):
-    root_title: str = "FA_EM_SERVICE"
-    space:      str = "UICA"
+    root_title: str = settings.root_title
+    space:      str = settings.space_key
     full_sync:  bool = False
 
 

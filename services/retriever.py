@@ -75,7 +75,7 @@ def retrieve(
 
     # ─ 向量检索 ──────────────────────────────────────────────
     q_vec = embed(query)
-    hits = vector_search(q_vec, top_k=top_k * 3, filter_expr=filter_expr)
+    hits = vector_search(q_vec, top_k=top_k * 2, filter_expr=filter_expr)
 
     if not hits:
         return []
