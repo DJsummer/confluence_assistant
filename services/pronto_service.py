@@ -16,8 +16,7 @@ log = logging.getLogger(__name__)
 
 
 def _pronto_auth() -> HTTPBasicAuth:
-    # Pronto 与 Jira 共用同一套 Nokia SSO 认证
-    return HTTPBasicAuth(settings.jira_user, settings.jira_token)
+    return HTTPBasicAuth(settings.pronto_user, settings.pronto_token)
 
 
 def get_pronto_pr(pr_id: str) -> dict:
@@ -47,8 +46,13 @@ def get_pronto_pr(pr_id: str) -> dict:
             m = re.search(r"<title[^>]*>([^<]+)</title>", resp.text, re.I)
             if m:
                 raw = m.group(1).strip()
-                # 去掉 "Pronto - " 前缀
-                title = re.sub(r"^Pronto\s*[-–]\s*", "", raw)
+                # Nokia SSO 登录页关键词 → 说明认证失败，保持默认标题
+                _LOGIN_KEYWORDS = ("sign in", "log in", "login", "sso", "authenticate")
+                if any(kw in raw.lower() for kw in _LOGIN_KEYWORDS):
+                    log.debug("Pronto %s: got login page, skip title extraction", pr_id)
+                else:
+                    # 去掉 "Pronto - " 前缀
+                    title = re.sub(r"^Pronto\s*[-–]\s*", "", raw)
     except Exception as e:
         log.debug("Pronto fetch skipped for %s: %s", pr_id, e)
 

@@ -49,6 +49,12 @@ def search_confluence(query: str) -> str:
 def get_jira(key: str) -> str:
     """查询单个 Jira issue 的详情。输入 Jira key，如 FPB-1495109 或 FCA_OAMEFS-67106。返回标题、状态、优先级、描述和链接。"""
     result = get_jira_issue(key.strip())
+    if result.get("forbidden"):
+        return (
+            f"无权限访问 {result['key']}（403 Forbidden），可能属于受限项目。"
+            f"链接：{result['url']} "
+            f"建议：请用 search_confluence 搜索相关关键词获取更多信息。"
+        )
     if "error" in result:
         return f"查询失败：{result['error']}"
     return (

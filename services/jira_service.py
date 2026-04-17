@@ -8,15 +8,15 @@ import logging
 import re
 
 import requests
-from requests.auth import HTTPBasicAuth
 
 from config.settings import settings
 
 log = logging.getLogger(__name__)
 
 
-def _jira_auth() -> HTTPBasicAuth:
-    return HTTPBasicAuth(settings.jira_user, settings.jira_token)
+def _jira_headers() -> dict:
+    # Jira Data Center PAT 认证：Bearer token
+    return {"Authorization": f"Bearer {settings.jira_token}"}
 
 
 def get_jira_issue(key: str) -> dict:
@@ -30,12 +30,18 @@ def get_jira_issue(key: str) -> dict:
     try:
         resp = requests.get(
             url,
-            auth=_jira_auth(),
+            headers=_jira_headers(),
             timeout=10,
             verify=False,   # Nokia 内网证书
         )
         if resp.status_code == 404:
             return {"error": f"Jira issue {key} 不存在"}
+        if resp.status_code == 403:
+            return {
+                "key": key,
+                "url": f"{settings.jira_base}/browse/{key}",
+                "forbidden": True,
+            }
         resp.raise_for_status()
         data = resp.json()
 
