@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from api.routes import chat, sync
+from api.routes import chat, sync, agent
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,6 +29,7 @@ app.add_middleware(
 
 app.include_router(chat.router)
 app.include_router(sync.router)
+app.include_router(agent.router)
 
 _static = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=_static), name="static")

@@ -34,8 +34,16 @@ class Settings(BaseSettings):
     chunk_overlap: int = 64
 
     # ── Confluence 抓取目标 ──────────────────────────────────
-    root_title: str = "FA_EM_SERVICE"
-    space_key: str = "UICA"
+    root_title: str = ""
+    space_key: str = ""
+
+    # ── Jira ─────────────────────────────────────────────
+    jira_base: str = "https://jiradc.ext.net.nokia.com"
+    jira_user: str = ""
+    jira_token: str = ""
+
+    # ── Pronto ─────────────────────────────────────────────
+    pronto_base: str = "https://pronto.ext.net.nokia.com"
 
     # ── 模型缓存目录（HuggingFace 下载 / 本地已有模型时指定绝对路径）──
     hf_cache_dir: str = "/models"           # docker volume 挂载路径，与 HF_HOME 一致

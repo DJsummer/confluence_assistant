@@ -285,6 +285,54 @@
     }
     #clear-btn:hover { border-color: var(--danger); color: var(--danger); }
 
+    /* ── 模式切换 ── */
+    .mode-toggle { display: flex; gap: 6px; }
+    .mode-btn {
+      flex: 1; padding: 7px 4px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all .15s;
+    }
+    .mode-btn.active {
+      background: var(--nokia-blue-light);
+      border-color: var(--nokia-blue);
+      color: var(--nokia-blue);
+    }
+    .mode-btn:hover:not(.active) { background: var(--border); }
+
+    /* ── Agent 步骤卡片 ── */
+    .agent-step {
+      margin: 4px 0;
+      padding: 6px 10px;
+      background: #f8f9ff;
+      border-left: 3px solid var(--nokia-blue);
+      border-radius: 0 4px 4px 0;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .agent-step .step-tool {
+      font-weight: 600;
+      color: var(--nokia-blue);
+    }
+    .agent-step .step-input {
+      margin-top: 2px;
+      font-style: italic;
+      word-break: break-all;
+    }
+    .agent-steps-header {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+
     /* scrollbar */
     #messages::-webkit-scrollbar { width: 6px; }
     #messages::-webkit-scrollbar-track { background: transparent; }
@@ -297,12 +345,22 @@
 <header>
   <span class="nokia-logo">Nokia</span>
   <span class="divider"></span>
-  <h1>UICA EM_Service · Confluence AI 助手</h1>
+  <h1>UICA · Confluence AI 助手</h1>
   <span class="badge" id="status-badge">检查中…</span>
 </header>
 
 <main>
   <aside>
+    <section>
+      <h3>模式</h3>
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="mode-rag" onclick="setMode('rag')">📚 RAG 问答</button>
+        <button class="mode-btn" id="mode-agent" onclick="setMode('agent')">🤖 Agent</button>
+      </div>
+      <div id="mode-desc" style="font-size:11px;color:var(--text-muted);margin-top:8px">
+        基于 Confluence 向量检索回答
+      </div>
+    </section>
     <section>
       <h3>设置</h3>
       <div class="setting-row">
@@ -325,7 +383,7 @@
     <div id="messages">
       <div class="welcome" id="welcome">
         <div class="icon">📖</div>
-        <h2>UICA EM_Service 知识库助手</h2>
+        <h2>UICA 知识库助手</h2>
         <p>基于 Confluence 内容的智能问答</p>
         <p style="margin-top:6px;font-size:12px">输入问题，按 Enter 发送</p>
       </div>
@@ -352,6 +410,18 @@
   const welcome    = document.getElementById('welcome');
 
   let history = [];   // [{role, content}]
+  let currentMode = 'rag';  // 'rag' | 'agent'
+
+  // ── 模式切换 ──────────────────────────────────────────────
+  function setMode(mode) {
+    currentMode = mode;
+    document.getElementById('mode-rag').classList.toggle('active', mode === 'rag');
+    document.getElementById('mode-agent').classList.toggle('active', mode === 'agent');
+    const desc = document.getElementById('mode-desc');
+    desc.textContent = mode === 'rag'
+      ? '基于 Confluence 向量检索回答'
+      : 'Agent 自动决策：查 Confluence / Jira / Pronto';
+  }
 
   // ── 健康检查 ──────────────────────────────────────────────
   async function checkHealth() {
@@ -402,6 +472,11 @@
     const typingId = appendTyping();
 
     try {
+      if (currentMode === 'agent') {
+        await sendAgent(q, typingId);
+        return;
+      }
+
       const res = await fetch(API + '/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -463,7 +538,114 @@
     }
   }
 
+  // ── Agent 流式发送 ─────────────────────────────────────────
+  async function sendAgent(q, typingId) {
+    const topK = parseInt(document.getElementById('top-k').value) || 5;
+    try {
+      const res = await fetch(API + '/agent/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q, top_k: topK, history }),
+      });
+
+      if (!res.ok) {
+        removeTyping(typingId);
+        appendMsg('ai', `❌ Agent 请求失败：${res.status}`);
+        return;
+      }
+
+      removeTyping(typingId);
+      const { bubble, textNode, stepsDiv } = appendAgentBubble();
+      let fullAnswer = '';
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop();
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue;
+          try {
+            const ev = JSON.parse(part.slice(6));
+            if (ev.type === 'step') {
+              appendAgentStep(stepsDiv, ev.tool, ev.input, '');
+            } else if (ev.type === 'result') {
+              updateLastStep(stepsDiv, ev.output);
+            } else if (ev.type === 'answer') {
+              fullAnswer = ev.text;
+              textNode.textContent = fullAnswer;
+            } else if (ev.type === 'error') {
+              textNode.textContent = '❌ ' + ev.text;
+            }
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+          } catch (_) {}
+        }
+      }
+
+      history.push({ role: 'user', content: q });
+      history.push({ role: 'assistant', content: fullAnswer });
+      if (history.length > 12) history = history.slice(-12);
+
+    } catch (err) {
+      removeTyping(typingId);
+      appendMsg('ai', `❌ 网络错误：${err.message}`);
+    } finally {
+      sendBtn.disabled = false;
+      questionEl.focus();
+    }
+  }
+
   // ── DOM 辅助 ──────────────────────────────────────────────
+  function appendAgentBubble() {
+    const div = document.createElement('div');
+    div.className = 'msg ai';
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = '🤖';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    // 步骤区域
+    const stepsDiv = document.createElement('div');
+    const hdr = document.createElement('div');
+    hdr.className = 'agent-steps-header';
+    hdr.textContent = '🔍 工具调用过程';
+    stepsDiv.appendChild(hdr);
+    bubble.appendChild(stepsDiv);
+    // 回答区域
+    const sep = document.createElement('hr');
+    sep.style.cssText = 'border:none;border-top:1px solid var(--border);margin:8px 0';
+    bubble.appendChild(sep);
+    const textNode = document.createElement('div');
+    bubble.appendChild(textNode);
+    div.appendChild(avatar);
+    div.appendChild(bubble);
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return { div, bubble, textNode, stepsDiv };
+  }
+
+  function appendAgentStep(stepsDiv, tool, input, output) {
+    const step = document.createElement('div');
+    step.className = 'agent-step';
+    step.innerHTML = `<span class="step-tool">▶ ${tool}</span><div class="step-input">${input.slice(0,120)}</div>`;
+    stepsDiv.appendChild(step);
+  }
+
+  function updateLastStep(stepsDiv, output) {
+    const steps = stepsDiv.querySelectorAll('.agent-step');
+    if (!steps.length) return;
+    const last = steps[steps.length - 1];
+    const out = document.createElement('div');
+    out.style.cssText = 'margin-top:2px;color:#444;font-size:11px';
+    out.textContent = '✓ ' + output.slice(0, 100) + (output.length > 100 ? '…' : '');
+    last.appendChild(out);
+  }
+
   function appendStreamingBubble() {
     const div = document.createElement('div');
     div.className = 'msg ai';
@@ -555,7 +737,7 @@
     const w = document.createElement('div');
     w.className = 'welcome';
     w.id = 'welcome';
-    w.innerHTML = '<div class="icon">�</div><h2>UICA EM_Service 知识库助手</h2><p>基于 Confluence 内容的智能问答</p><p style="margin-top:6px;font-size:12px">输入问题，按 Enter 发送</p>';
+    w.innerHTML = '<div class="icon">�</div><h2>UICA 知识库助手</h2><p>基于 Confluence 内容的智能问答</p><p style="margin-top:6px;font-size:12px">输入问题，按 Enter 发送</p>';
     messagesEl.appendChild(w);
   }
 
