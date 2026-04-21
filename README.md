@@ -102,7 +102,7 @@ PRONTO_TOKEN=your_ad_password      # AD 域密码（不是 token）
 
 # LLM（二选一）
 # 方式一：阿里百炼
-LLM_MODEL=qwen-plus
+LLM_MODEL=qwen-plus-2025-07-28
 LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 VLLM_API_KEY=sk-your_key
 
@@ -165,7 +165,7 @@ SSE 事件格式（Agent）：
 data: {"type": "step",   "tool": "get_jira", "input": "FPB-123"}
 data: {"type": "result", "tool": "get_jira", "output": "..."}
 data: {"type": "answer", "text": "最终回答..."}
-data: {"type": "done"}
+data: {"type": "done",   "usage": {"prompt_tokens": 382, "completion_tokens": 156, "total_tokens": 538}}
 ```
 
 ### 同步接口
@@ -182,6 +182,7 @@ GET  /sync/{task_id} # 查询任务状态
 | 特性 | 实现方式 |
 |---|---|
 | 流式输出 | SSE，首 token ~2s |
+| Token 耗费显示 | 每条回答气泡底部显示输入/输出/总计 token 数 |
 | 增量同步 | 对比 `updated_at`，未变更页面跳过 |
 | 并发抓取 | `ThreadPoolExecutor`，8 线程并行 |
 | 表格支持 | HTML `<table>` 转 Markdown 行列结构 |
@@ -190,6 +191,7 @@ GET  /sync/{task_id} # 查询任务状态
 | 多轮对话 | 保留最近 6 轮历史 |
 | 离线推理 | `HF_HUB_OFFLINE=1`，模型缓存到 Docker volume |
 | 热更新 | 源码挂载到容器，保存即生效（无需重建镜像）|
+| `.env` 变更 | 修改后需 `docker compose up -d --force-recreate api worker` 才能生效 |
 | 403 降级 | Jira 无权限时返回链接，Agent 自动 fallback 搜索 |
 | 反幻觉约束 | Agent system prompt 强制要求只用工具返回内容作答，禁止编造 URL 或补充预训练知识 |
 | Pronto REST API | 通过 `/prontoapi/rest/api/1/problemReport/{PR_ID}` 查询 PR 详情，不依赖 HTML 解析 |
@@ -208,6 +210,6 @@ GET  /sync/{task_id} # 查询任务状态
 |---|---|---|
 | `BAAI/bge-m3` | 中英文 Embedding（dim=1024）| ~570MB |
 | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Reranker | ~90MB |
-| `qwen-plus`（推荐）| 问答生成，阿里百炼 API | 按 token 计费 |
+| `qwen-plus-2025-07-28`（推荐）| 问答生成，阿里百炼 API | 按 token 计费 |
 | `qwen2.5:7b` | 本地 Ollama 推理 | ~4.7GB |
 
