@@ -53,7 +53,7 @@ rag/
 │   ├── llm_service.py        # OpenAI-compatible API + 多轮对话 + 流式输出
 │   ├── agent_service.py      # LangChain Tool Calling Agent
 │   ├── jira_service.py       # Jira DC REST API（Bearer Token 认证）
-│   └── pronto_service.py     # Pronto PR 链接与标题获取
+│   └── pronto_service.py     # Pronto REST API 查询（PR 详情、状态、经办人）
 ├── db/
 │   ├── vector_store.py       # Milvus HNSW 索引，权限 filter
 │   └── metadata_db.py        # PostgreSQL 元数据 + 增量同步时间戳
@@ -96,9 +96,9 @@ JIRA_USER=your_username
 JIRA_TOKEN=your_personal_access_token   # Jira DC PAT
 
 # Pronto（可选，用于 Agent 模式查询 PR）
-PRONTO_BASE=https://pronto.your-company.com
-PRONTO_USER=your_username
-PRONTO_TOKEN=your_token
+PRONTO_BASE=https://pronto.ext.net.nokia.com
+PRONTO_USER=your_ad_username       # AD 域账号
+PRONTO_TOKEN=your_ad_password      # AD 域密码（不是 token）
 
 # LLM（二选一）
 # 方式一：阿里百炼
@@ -144,8 +144,10 @@ LangChain Tool Calling Agent，LLM 自主决定调用哪些工具：
 | 工具 | 触发场景 | 示例 |
 |---|---|---|
 | `search_confluence` | 技术问题、流程说明 | "XXX 的部署流程是什么？" |
-| `get_jira_issue` | 包含 Jira key | "FPB-1495109 是什么需求？" |
-| `get_pronto_pr` | 包含 PR ID | "PR700839 是什么问题？" |
+| `get_jira` | 包含 Jira key | "FPB-1495109 是什么需求？" |
+| `get_pronto` | 包含 PR ID | "PR755857 是什么问题？"、"755857 状态" |
+
+Pronto PR ID 支持三种格式：`PR755857`、`755857`、`02052295`（带或不带 PR 前缀、纯数字均可自动识别）。
 
 ---
 
@@ -189,6 +191,8 @@ GET  /sync/{task_id} # 查询任务状态
 | 离线推理 | `HF_HUB_OFFLINE=1`，模型缓存到 Docker volume |
 | 热更新 | 源码挂载到容器，保存即生效（无需重建镜像）|
 | 403 降级 | Jira 无权限时返回链接，Agent 自动 fallback 搜索 |
+| 反幻觉约束 | Agent system prompt 强制要求只用工具返回内容作答，禁止编造 URL 或补充预训练知识 |
+| Pronto REST API | 通过 `/prontoapi/rest/api/1/problemReport/{PR_ID}` 查询 PR 详情，不依赖 HTML 解析 |
 
 ## 依赖服务
 

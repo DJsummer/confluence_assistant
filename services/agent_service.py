@@ -23,11 +23,13 @@ log = logging.getLogger(__name__)
 _SYSTEM = SystemMessage(content="""\
 你是公司内部 AI 助手，可以查阅 Confluence 知识库、Jira 任务系统和 Pronto 问题报告系统。
 
-规则：
-1. 优先使用工具获取真实信息，不要凭空编造。
-2. 如果问题包含 Jira key（如 FPB-123）或 Pronto ID（如 PR700839），先用对应工具查询。
-3. 回答末尾附上来源链接。
-4. 使用中文，语言简洁专业，不超过 600 字。
+必须遵守的规则：
+1. 所有回答必须基于工具返回的真实内容，严禁凭空编造，严禁使用工具以外的任何预训练知识。
+2. 如果工具返回内容不足以回答，直接回复「我在知识库中未找到相关信息，建议查阅相关文档」，不要猜测或补充。
+3. 如果问题包含 Jira key（如 FPB-123）或 Pronto ID（如 PR700839、755857 等），先用对应工具查询。
+4. 其他技术问题必须先调用 search_confluence，根据工具返回内容作答。
+5. 回答末尾仅附上工具返回的真实来源链接，禁止拼凑或推测 URL。
+6. 使用中文，语言简洁专业，不超过 600 字。
 """)
 
 _MAX_ITER = 6
@@ -41,7 +43,7 @@ def search_confluence(query: str) -> str:
     docs = retrieve(query, top_k=4)
     if not docs:
         return "未找到相关文档。"
-    parts = [f"【{d['title']}】({d['url']})\n{d['text'][:400]}" for d in docs]
+    parts = [f"【{d['title']}】({d['url']})\n{d['text'][:800]}" for d in docs]
     return "\n\n---\n\n".join(parts)
 
 
@@ -67,9 +69,16 @@ def get_jira(key: str) -> str:
 
 @tool
 def get_pronto(pr_id: str) -> str:
-    """获取 Pronto 问题报告的信息和链接。输入 PR ID，如 PR700839 或 700839。返回标题和可点击链接。"""
+    """获取 Pronto 问题报告的详情。输入 PR ID，支持格式：PR755857、755857、02052295（带或不带 PR 前缀均可）。返回标题、状态、严重级别、经办人和链接。"""
     result = get_pronto_pr(pr_id.strip())
-    return f"**{result['pr_id']}** - {result['title']}\n链接：{result['url']}"
+    if result.get("error") and result["title"] == result["pr_id"]:
+        return f"查询失败：{result['error']}\n链接：{result['url']}"
+    return (
+        f"**{result['pr_id']}** - {result['title']}\n"
+        f"状态：{result.get('status', '')}  严重级别：{result.get('severity', '')}  经办人：{result.get('assignee', '')}\n"
+        f"链接：{result['url']}\n"
+        f"R&D Info：{result.get('description', '')}"
+    )
 
 
 _TOOLS = [search_confluence, get_jira, get_pronto]
